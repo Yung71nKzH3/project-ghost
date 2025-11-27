@@ -6,50 +6,54 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
-    transparent: true,    // Makes the background see-through
-    frame: false,         // Removes the white top bar/X button
-    alwaysOnTop: true,    // Keeps it over your game
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
     hasShadow: false,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      webviewTag: true  // <--- ADD THIS LINE!
+      webviewTag: true
     }
   });
 
-  mainWindow.maximize(); // Fill the screen
-  mainWindow.setIgnoreMouseEvents(true, { forward: true }); // Start in "Ghost Mode"
+  mainWindow.maximize();
+  
+  // Start in Ghost Mode (Click-through, Game Active)
+  mainWindow.setIgnoreMouseEvents(true, { forward: true });
   mainWindow.loadFile('index.html');
 }
 
-// TOGGLE: Press Ctrl + Shift + Z to switch modes
-function toggleInteraction() {
-  // We check if the window is currently ignoring mouse events
-  // But since Electron doesn't give us a simple "get" function, we'll track it manually or just toggle.
-  // Let's use a simple boolean tracker in the renderer or just flip logic here.
-  
-  // NOTE: We send a message to the webpage so it knows to change the visual style
-  mainWindow.webContents.send('toggle-mode');
+// Helper to switch click-through states
+function setInteractive(enable) {
+  if (enable) {
+    // INTERACTIVE: Mouse works on browser
+    mainWindow.setIgnoreMouseEvents(false);
+    mainWindow.focus();
+  } else {
+    // GHOST: Mouse passes through to game
+    mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    mainWindow.blur();
+  }
 }
 
 app.whenReady().then(() => {
   createWindow();
 
-  // Register the magic hotkey
+  // SHORTCUT 1: Stealth Mode (Ctrl+Shift+Z)
+  // Toggles mouse interactivity, but keeps the Search Bar HIDDEN.
   globalShortcut.register('CommandOrControl+Shift+Z', () => {
-    mainWindow.webContents.send('request-toggle');
+    mainWindow.webContents.send('toggle-stealth');
+  });
+
+  // SHORTCUT 2: Command Mode (Ctrl+Shift+X)
+  // Toggles mouse interactivity AND shows the Search Bar.
+  globalShortcut.register('CommandOrControl+Shift+X', () => {
+    mainWindow.webContents.send('toggle-command');
   });
 });
 
-// Listen for the command from the webpage to actually change window settings
+// Listener for manual mode changes from the UI
 ipcMain.on('set-ignore-mouse', (event, shouldIgnore) => {
-  if (shouldIgnore) {
-    // GHOST MODE: Clicks go through to the game
-    mainWindow.setIgnoreMouseEvents(true, { forward: true });
-    mainWindow.blur(); // Unfocus so game takes over
-  } else {
-    // BROWSER MODE: Clicks stay on the browser
-    mainWindow.setIgnoreMouseEvents(false);
-    mainWindow.focus();
-  }
+  setInteractive(!shouldIgnore);
 });
