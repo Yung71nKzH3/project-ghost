@@ -2,79 +2,134 @@
 <html>
 <head>
   <style>
-    body { margin: 0; overflow: hidden; font-family: sans-serif; }
-    
-    /* The Browser Bar */
-    #control-bar {
-      background: rgba(0, 0, 0, 0.85);
-      padding: 15px;
-      display: flex;
-      gap: 10px;
-      border-bottom: 2px solid #00ff00; /* Hacker green border */
-      transition: top 0.3s;
+    body { margin: 0; overflow: hidden; font-family: 'Consolas', 'Courier New', monospace; }
+
+    /* The layer that holds the search UI */
+    #ui-layer {
       position: absolute;
-      top: -100px; /* Hidden by default */
-      width: 100%;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      display: flex;
+      justify-content: center; /* Center Horizontally */
+      align-items: center;     /* Center Vertically */
+      pointer-events: none;    /* Let clicks pass through empty space */
       z-index: 9999;
+      transition: opacity 0.2s;
     }
 
-    /* Input Styling */
-    input {
-      background: #333;
-      color: white;
-      border: 1px solid #555;
-      padding: 8px;
+    /* The "Command Center" Box */
+    #command-box {
+      background: rgba(0, 0, 0, 0.9);
+      border: 2px solid #00ff00;
+      padding: 20px;
+      width: 600px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+      pointer-events: auto; /* Catch clicks inside the box */
+      border-radius: 8px;
+    }
+
+    /* Text Input styling */
+    input[type="text"] {
+      background: #111;
+      color: #00ff00;
+      border: 1px solid #333;
+      padding: 12px;
+      font-size: 18px;
+      font-family: inherit;
+      outline: none;
+    }
+    input[type="text"]::placeholder { color: #005500; }
+
+    /* The Controls Row (Slider + Buttons) */
+    .controls {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      color: #00ff00;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    /* Custom Range Slider */
+    input[type=range] {
       flex-grow: 1;
-      font-size: 16px;
-    }
-    button {
-      background: #00ff00;
-      border: none;
-      font-weight: bold;
+      accent-color: #00ff00;
       cursor: pointer;
-      padding: 0 20px;
     }
 
-    /* The actual website view */
+    button {
+      background: #003300;
+      color: #00ff00;
+      border: 1px solid #00ff00;
+      padding: 8px 15px;
+      cursor: pointer;
+      font-weight: bold;
+      font-family: inherit;
+      transition: background 0.2s;
+    }
+    button:hover { background: #00ff00; color: black; }
+
+    /* The Browser View */
     webview {
       width: 100vw;
       height: 100vh;
+      transition: opacity 0.2s;
     }
-    
+
     /* Helper text */
     #status {
       position: fixed;
-      bottom: 10px;
-      right: 10px;
-      color: rgba(255, 255, 255, 0.3);
+      bottom: 10px; right: 10px;
+      color: rgba(0, 255, 0, 0.5);
       font-weight: bold;
-      pointer-events: none; /* Let clicks pass through text */
+      pointer-events: none;
+      z-index: 10000;
+      text-shadow: 0 0 5px black;
     }
+
+    /* Utility to hide things */
+    .hidden { opacity: 0; pointer-events: none !important; }
   </style>
 </head>
 <body>
 
-  <div id="control-bar">
-    <div style="color:white; font-weight:bold; padding-top:8px;">GHOST BROWSER</div>
-    <input type="text" id="urlInput" placeholder="Enter URL (e.g. youtube.com)" />
-    <button onclick="navigate()">GO</button>
+  <div id="ui-layer">
+    <div id="command-box">
+      <div style="font-size: 14px; letter-spacing: 2px; text-align: center; color: #00ff00;">
+        GHOST://BROWSER_V2
+      </div>
+      
+      <input type="text" id="urlInput" placeholder="ENTER URL (e.g. youtube.com)" />
+      
+      <div class="controls">
+        <span>Opacity:</span>
+        <input type="range" id="opacitySlider" min="0.1" max="1" step="0.05" value="1">
+        
+        <button onclick="navigate()">GO</button>
+        <button onclick="injectGlassMode()">GLASS FX</button>
+      </div>
+    </div>
   </div>
 
-  <div id="status">Mode: GHOST (Ctrl+Shift+Z to toggle)</div>
+  <div id="status">Mode: GHOST (Ctrl+Shift+Z)</div>
 
   <webview id="view" src="about:blank"></webview>
 
   <script>
     const { ipcRenderer } = require('electron');
     
-    const bar = document.getElementById('control-bar');
+    const uiLayer = document.getElementById('ui-layer');
     const status = document.getElementById('status');
     const view = document.getElementById('view');
     const input = document.getElementById('urlInput');
+    const slider = document.getElementById('opacitySlider');
 
     let isGhost = true;
 
-    // Listen for Hotkey
+    // 1. LISTEN FOR TOGGLE HOTKEY
     ipcRenderer.on('request-toggle', () => {
       isGhost = !isGhost;
       updateMode();
@@ -82,31 +137,56 @@
 
     function updateMode() {
       if (isGhost) {
-        // Hide bar, let clicks pass through
-        bar.style.top = '-100px'; 
+        // GHOST MODE: Hide UI, Click-through
+        uiLayer.classList.add('hidden');
         status.innerText = "Mode: GHOST (Game Active)";
         ipcRenderer.send('set-ignore-mouse', true);
       } else {
-        // Show bar, capture clicks
-        bar.style.top = '0px';
-        status.innerText = "Mode: BROWSER (Type URL)";
+        // BROWSER MODE: Show UI, Capture clicks
+        uiLayer.classList.remove('hidden');
+        status.innerText = "Mode: INTERACTIVE";
         ipcRenderer.send('set-ignore-mouse', false);
-        input.focus();
+        input.focus(); // Auto-select the text box
+        input.select();
       }
     }
 
+    // 2. NAVIGATION LOGIC
     function navigate() {
       let url = input.value;
+      if (!url) return;
+      // Smart prefixing
       if (!url.startsWith('http')) url = 'https://' + url;
       view.src = url;
-      // Auto-hide after searching
+      
+      // Auto-hide UI after GO
       isGhost = true;
       updateMode();
     }
 
+    // 3. OPACITY SLIDER LOGIC
+    slider.addEventListener('input', (e) => {
+      view.style.opacity = e.target.value;
+    });
+
+    // 4. GLASS MODE (The Matrix Trick)
+    // This injects CSS into the website to try and make the background transparent
+    function injectGlassMode() {
+      const css = `
+        html, body { background: rgba(0,0,0,0) !important; }
+        #content, #page-manager, #columns { background: rgba(0,0,0,0) !important; }
+        ytd-app { background: rgba(0,0,0,0) !important; }
+      `;
+      view.insertCSS(css);
+    }
+
+    // Enter Key Support
     input.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') navigate();
     });
+    
+    // Initial State
+    updateMode();
   </script>
 </body>
 </html>
