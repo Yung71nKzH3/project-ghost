@@ -4,14 +4,13 @@
   <style>
     body { margin: 0; overflow: hidden; font-family: 'Consolas', 'Courier New', monospace; }
 
-    /* UI Layer - Covers screen but lets clicks pass if empty */
+    /* UI Layer */
     #ui-layer {
       position: absolute; top: 0; left: 0;
       width: 100vw; height: 100vh;
       display: flex; justify-content: center; align-items: center;
-      pointer-events: none;
       z-index: 9999;
-      transition: opacity 0.2s;
+      transition: opacity 0.2s, visibility 0.2s; /* Animate visibility too */
     }
 
     /* The Command Box */
@@ -22,7 +21,7 @@
       width: 650px;
       display: flex; flex-direction: column; gap: 15px;
       box-shadow: 0 0 25px rgba(0, 255, 0, 0.2);
-      pointer-events: auto; /* Catch clicks */
+      pointer-events: auto;
       border-radius: 6px;
     }
 
@@ -36,6 +35,7 @@
       font-size: 12px;
       text-transform: uppercase;
       border: 1px solid #00ff00;
+      transition: opacity 0.2s;
     }
 
     /* Inputs & Controls */
@@ -62,9 +62,19 @@
     button.active { background: #00ff00; color: black; box-shadow: 0 0 10px #00ff00; }
 
     /* The Webview */
-    webview { width: 100vw; height: 100vh; transition: opacity 0.2s; }
+    webview { width: 100vw; height: 100vh; transition: opacity 0.3s; }
 
-    .hidden { opacity: 0; pointer-events: none !important; }
+    /* Utility to hide things completely */
+    .hidden { 
+      opacity: 0; 
+      visibility: hidden; /* Takes it out of render tree - NO INTERACTION */
+      pointer-events: none !important; 
+    }
+    
+    .fully-hidden {
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
   </style>
 </head>
 <body>
@@ -86,7 +96,7 @@
         <button onclick="toggleCinemaMode()">CINEMA</button>
       </div>
       <div style="font-size: 10px; color: #666; text-align: center;">
-        [Ctrl+Shift+Z: Stealth] [Ctrl+Shift+X: Command]
+        [Shift+Z: Stealth] [Shift+X: Menu] [Shift+H: Hide All]
       </div>
     </div>
   </div>
@@ -104,9 +114,8 @@
     const input = document.getElementById('urlInput');
     const glassBtn = document.getElementById('glassBtn');
 
-    // STATE
-    let currentMode = 'GHOST'; // GHOST, STEALTH, COMMAND
-    let glassKey = null;       // To store the injected CSS key
+    let currentMode = 'GHOST';
+    let glassKey = null;
 
     // --- 1. MODE SWITCHING LOGIC ---
 
@@ -114,83 +123,93 @@
       currentMode = mode;
       
       if (mode === 'GHOST') {
-        // Game Mode: No UI, No Clicks
+        // Game Mode: No UI, No Clicks, NO HOVER
         uiLayer.classList.add('hidden');
+        view.classList.remove('fully-hidden');
         status.innerText = "STATUS: GHOST (GAME ACTIVE)";
         status.style.opacity = '0.5';
-        ipcRenderer.send('set-ignore-mouse', true);
+        
+        // forward: false is the magic fix for "Hover" issues
+        ipcRenderer.send('set-ignore-mouse', { ignore: true, forward: false });
       
       } else if (mode === 'STEALTH') {
-        // Stealth Mode: Clicks work, UI hidden (Good for pausing video)
+        // Stealth Mode: Clicks work, UI hidden
         uiLayer.classList.add('hidden');
+        view.classList.remove('fully-hidden');
         status.innerText = "STATUS: STEALTH (MOUSE ACTIVE)";
         status.style.opacity = '1';
-        ipcRenderer.send('set-ignore-mouse', false);
+        
+        ipcRenderer.send('set-ignore-mouse', { ignore: false });
       
       } else if (mode === 'COMMAND') {
         // Command Mode: Full UI, Clicks work
         uiLayer.classList.remove('hidden');
+        view.classList.remove('fully-hidden');
         status.innerText = "STATUS: COMMAND CENTER";
         status.style.opacity = '1';
-        ipcRenderer.send('set-ignore-mouse', false);
+        
+        ipcRenderer.send('set-ignore-mouse', { ignore: false });
         input.focus();
         input.select();
+      
+      } else if (mode === 'HIDDEN') {
+        // Panic Mode: Hide everything
+        uiLayer.classList.add('hidden');
+        view.classList.add('fully-hidden'); // CSS opacity 0
+        status.style.opacity = '0'; // Hide status too
+        
+        // Keep in ghost mode (ignore mouse)
+        ipcRenderer.send('set-ignore-mouse', { ignore: true, forward: false });
       }
     }
 
-    // Listen for Shortcuts from Main Process
+    // Listen for Shortcuts
     ipcRenderer.on('toggle-stealth', () => {
-      // Toggle between GHOST and STEALTH
       setMode(currentMode === 'GHOST' ? 'STEALTH' : 'GHOST');
     });
 
     ipcRenderer.on('toggle-command', () => {
-      // Toggle between GHOST and COMMAND
       setMode(currentMode === 'GHOST' ? 'COMMAND' : 'GHOST');
     });
 
+    ipcRenderer.on('toggle-hide', () => {
+      // Toggle between HIDDEN and GHOST
+      if (currentMode === 'HIDDEN') {
+        setMode('GHOST');
+      } else {
+        setMode('HIDDEN');
+      }
+    });
 
-    // --- 2. GLASS FX TOGGLE ---
+
+    // --- 2. GLASS FX & CINEMA (Same as before) ---
 
     async function toggleGlassMode() {
       if (glassKey) {
-        // If key exists, remove CSS (Turn Off)
         await view.removeInsertedCSS(glassKey);
         glassKey = null;
         glassBtn.classList.remove('active');
       } else {
-        // Inject CSS (Turn On)
-        // We target broad elements to force transparency
         const css = `
           html, body { background: transparent !important; }
           #content, #page-manager, #columns, #primary, #secondary { background: transparent !important; }
           ytd-app { background: transparent !important; }
-          .ytp-gradient-top, .ytp-gradient-bottom { display: none !important; } /* Hide YT shadows */
+          .ytp-gradient-top, .ytp-gradient-bottom { display: none !important; }
         `;
         glassKey = await view.insertCSS(css);
         glassBtn.classList.add('active');
       }
     }
 
-
-    // --- 3. CINEMA MODE (Fake Fullscreen) ---
-
     function toggleCinemaMode() {
-      // This script runs INSIDE the webview to find the video and blow it up
       const code = `
         (function() {
           const video = document.querySelector('video');
           if (!video) return;
-          
-          // Check if we already applied our custom class
           if (video.classList.contains('ghost-cinema')) {
-            // Revert
             video.style.cssText = '';
             video.classList.remove('ghost-cinema');
           } else {
-            // Apply Cinema Mode
-            // We force it to fixed position, top left, 100% width/height
-            // and highest Z-index possible.
             video.style.cssText = 'position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important; background: black;';
             video.classList.add('ghost-cinema');
           }
@@ -199,15 +218,13 @@
       view.executeJavaScript(code);
     }
 
-
-    // --- 4. STANDARD UTILS ---
-
+    // --- UTILS ---
     function navigate() {
       let url = input.value;
       if (!url) return;
       if (!url.startsWith('http')) url = 'https://' + url;
       view.src = url;
-      setMode('GHOST'); // Auto hide after go
+      setMode('GHOST');
     }
 
     document.getElementById('opacitySlider').addEventListener('input', (e) => {
@@ -218,7 +235,7 @@
       if (e.key === 'Enter') navigate();
     });
 
-    // Start in Ghost Mode
+    // Start
     setMode('GHOST');
 
   </script>
