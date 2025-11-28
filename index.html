@@ -4,13 +4,13 @@
   <style>
     body { margin: 0; overflow: hidden; font-family: 'Consolas', 'Courier New', monospace; }
 
-    /* UI Layer */
+    /* UI Layer - Covers screen but lets clicks pass if empty */
     #ui-layer {
       position: absolute; top: 0; left: 0;
       width: 100vw; height: 100vh;
       display: flex; justify-content: center; align-items: center;
       z-index: 9999;
-      transition: opacity 0.2s, visibility 0.2s; /* Animate visibility too */
+      transition: opacity 0.2s, visibility 0.2s;
     }
 
     /* The Command Box */
@@ -67,7 +67,7 @@
     /* Utility to hide things completely */
     .hidden { 
       opacity: 0; 
-      visibility: hidden; /* Takes it out of render tree - NO INTERACTION */
+      visibility: hidden; 
       pointer-events: none !important; 
     }
     
@@ -103,7 +103,8 @@
 
   <div id="status">STATUS: GHOST</div>
 
-  <webview id="view" src="about:blank"></webview>
+  <!-- Reverted to standard webview (No spoofing) -->
+  <webview id="view" src="about:blank" allowpopups plugins></webview>
 
   <script>
     const { ipcRenderer } = require('electron');
@@ -123,66 +124,43 @@
       currentMode = mode;
       
       if (mode === 'GHOST') {
-        // Game Mode: No UI, No Clicks, NO HOVER
         uiLayer.classList.add('hidden');
         view.classList.remove('fully-hidden');
         status.innerText = "STATUS: GHOST (GAME ACTIVE)";
         status.style.opacity = '0.5';
-        
-        // forward: false is the magic fix for "Hover" issues
         ipcRenderer.send('set-ignore-mouse', { ignore: true, forward: false });
       
       } else if (mode === 'STEALTH') {
-        // Stealth Mode: Clicks work, UI hidden
         uiLayer.classList.add('hidden');
         view.classList.remove('fully-hidden');
         status.innerText = "STATUS: STEALTH (MOUSE ACTIVE)";
         status.style.opacity = '1';
-        
         ipcRenderer.send('set-ignore-mouse', { ignore: false });
       
       } else if (mode === 'COMMAND') {
-        // Command Mode: Full UI, Clicks work
         uiLayer.classList.remove('hidden');
         view.classList.remove('fully-hidden');
         status.innerText = "STATUS: COMMAND CENTER";
         status.style.opacity = '1';
-        
         ipcRenderer.send('set-ignore-mouse', { ignore: false });
         input.focus();
         input.select();
       
       } else if (mode === 'HIDDEN') {
-        // Panic Mode: Hide everything
         uiLayer.classList.add('hidden');
-        view.classList.add('fully-hidden'); // CSS opacity 0
-        status.style.opacity = '0'; // Hide status too
-        
-        // Keep in ghost mode (ignore mouse)
+        view.classList.add('fully-hidden');
+        status.style.opacity = '0';
         ipcRenderer.send('set-ignore-mouse', { ignore: true, forward: false });
       }
     }
 
     // Listen for Shortcuts
-    ipcRenderer.on('toggle-stealth', () => {
-      setMode(currentMode === 'GHOST' ? 'STEALTH' : 'GHOST');
-    });
-
-    ipcRenderer.on('toggle-command', () => {
-      setMode(currentMode === 'GHOST' ? 'COMMAND' : 'GHOST');
-    });
-
-    ipcRenderer.on('toggle-hide', () => {
-      // Toggle between HIDDEN and GHOST
-      if (currentMode === 'HIDDEN') {
-        setMode('GHOST');
-      } else {
-        setMode('HIDDEN');
-      }
-    });
+    ipcRenderer.on('toggle-stealth', () => setMode(currentMode === 'GHOST' ? 'STEALTH' : 'GHOST'));
+    ipcRenderer.on('toggle-command', () => setMode(currentMode === 'GHOST' ? 'COMMAND' : 'GHOST'));
+    ipcRenderer.on('toggle-hide', () => currentMode === 'HIDDEN' ? setMode('GHOST') : setMode('HIDDEN'));
 
 
-    // --- 2. GLASS FX & CINEMA (Same as before) ---
+    // --- 2. GLASS FX & CINEMA ---
 
     async function toggleGlassMode() {
       if (glassKey) {
@@ -235,9 +213,7 @@
       if (e.key === 'Enter') navigate();
     });
 
-    // Start
     setMode('GHOST');
-
   </script>
 </body>
 </html>

@@ -1,17 +1,4 @@
-require('dotenv').config(); // <--- Loads the .env file
 const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
-
-// Get paths from the .env file
-const widevinePath = process.env.WIDEVINE_PATH;
-const widevineVersion = process.env.WIDEVINE_VERSION;
-
-// Only inject if the variables exist (prevents crashing if you forget the .env)
-if (widevinePath && widevineVersion) {
-  app.commandLine.appendSwitch('widevine-cdm-path', widevinePath);
-  app.commandLine.appendSwitch('widevine-cdm-version', widevineVersion);
-} else {
-  console.warn("⚠️ Widevine DRM not configured. Video streaming may fail.");
-}
 
 let mainWindow;
 
@@ -27,13 +14,14 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
       webviewTag: true,
-      plugins: true,
+      // We keep plugins enabled just in case, but no complex DRM paths
+      plugins: true, 
     }
   });
 
   mainWindow.maximize();
   
-  // Start in Ghost Mode
+  // Start in Ghost Mode (Click-through, Game Active, NO Hover)
   mainWindow.setIgnoreMouseEvents(true, { forward: false });
   mainWindow.loadFile('index.html');
 }
@@ -41,18 +29,31 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  // SHORTCUTS
-  globalShortcut.register('CommandOrControl+Shift+Z', () => mainWindow.webContents.send('toggle-stealth'));
-  globalShortcut.register('CommandOrControl+Shift+X', () => mainWindow.webContents.send('toggle-command'));
-  globalShortcut.register('CommandOrControl+Shift+H', () => mainWindow.webContents.send('toggle-hide'));
+  // SHORTCUT 1: Stealth Mode (Ctrl+Shift+Z) - Mouse works, UI hidden
+  globalShortcut.register('CommandOrControl+Shift+Z', () => {
+    mainWindow.webContents.send('toggle-stealth');
+  });
+
+  // SHORTCUT 2: Command Mode (Ctrl+Shift+X) - Mouse works, Search UI visible
+  globalShortcut.register('CommandOrControl+Shift+X', () => {
+    mainWindow.webContents.send('toggle-command');
+  });
+
+  // SHORTCUT 3: Hide All (Ctrl+Shift+H) - Panic button
+  globalShortcut.register('CommandOrControl+Shift+H', () => {
+    mainWindow.webContents.send('toggle-hide');
+  });
 });
 
-// MOUSE HANDLING
+// Listener for manual mode changes from the UI
 ipcMain.on('set-ignore-mouse', (event, config) => {
   if (config.ignore) {
+    // GHOST MODE: 
+    // forward: false means the browser won't even see your mouse moving (saves CPU/hover effects)
     mainWindow.setIgnoreMouseEvents(true, { forward: config.forward });
     mainWindow.blur();
   } else {
+    // INTERACTIVE MODE
     mainWindow.setIgnoreMouseEvents(false);
     mainWindow.focus();
   }
