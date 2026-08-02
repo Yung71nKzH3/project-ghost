@@ -5,7 +5,7 @@
   "description": "The ultimate gaming overlay browser.",
   "main": "main.js",
   "scripts": {
-    "start": "electron-forge start",
+    "start": "electron .",
     "package": "electron-forge package",
     "make": "electron-forge make"
   },
@@ -28,5 +28,15 @@
     "@electron-forge/plugin-fuses": "^7.10.2",
     "@electron/fuses": "^1.8.0",
     "electron": "^39.2.4"
+  },
+  "overrides": {
+    "tar": "^7.5.22",
+    "tmp": "^0.2.7",
+    "brace-expansion": "^5.0.8",
+    "minimatch": "^10.2.6",
+    "glob": "^13.0.6",
+    "picomatch": "^4.0.2",
+    "@xmldom/xmldom": "^0.9.7",
+    "lodash": "^4.17.21"
   }
 }
